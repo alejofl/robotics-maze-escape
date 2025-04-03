@@ -42,6 +42,8 @@
     <rosparam file="$(find turtlebot3_navigation)/param/dwa_local_planner_params_$(arg model).yaml" command="load" />
   </node>
 
+  <node pkg="robotics-maze-escape" type="main.py" name="maze_escape" output="screen"></node>
+
   <!--node pkg="amcl" type="amcl" name="amcl">
     <param name="min_particles"             value="500"/>
     <param name="max_particles"             value="3000"/>

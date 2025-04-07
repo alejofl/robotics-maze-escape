@@ -10,5 +10,5 @@ if __name__ == "__main__":
     map = deserialize_map(map_data)
     laser_scan = get_laser_scan(map.resolution)
     # plot_map_and_laser_scan(map, laser_scan)
-    robot_position = predict_robot_position(map, laser_scan)
-    print(f"Robot position: {robot_position}")
+    robot_position_idx, robot_position  = predict_robot_position(map, laser_scan)
+    print(f"Robot position: {robot_position_idx}, {robot_position}, {map.map[robot_position_idx[0]][robot_position_idx[1]]}")

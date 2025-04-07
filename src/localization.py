@@ -37,13 +37,14 @@ def deserialize_map(data: OccupancyGrid) -> Map:
     for y in range(data.info.height):
         for x in range(data.info.width):
             p = MapPoint(*coordinates(x, y), walls[y][x] == 100)
-            map[y][x] = p
+            map[x][y] = p
 
     return Map(
         width=data.info.width,
         height=data.info.height,
+        origin=(data.info.origin.position.x, data.info.origin.position.y),
         resolution=data.info.resolution,
-        map=map,
+        map=map
     )
 
 
@@ -84,7 +85,7 @@ def get_laser_scan(map_resolution: float) -> np.ndarray:
     return np.array(points)
 
 
-def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[float, float]:
+def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[Tuple[int, int], Point]:
     """
     Predict the robot position based on the laser scan data, using K-Nearest Neighbors (kNN) algorithm.
     
@@ -93,7 +94,7 @@ def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[float, flo
         laser_scan (np.ndarray): laser scan data
         
     Returns:
-        Tuple[float, float]: predicted position of the robot (x, y)
+        Tuple[Tuple[int, int], Point]: predicted robot position in map indices and world coordinates
     """
     real_amount_of_walls = len(laser_scan)
     x_train = []
@@ -107,7 +108,7 @@ def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[float, flo
 
     possible_positions = []
     for i in np.arange(0, np.round(map.width * map.resolution), 1):
-        for j in np.arange(0, map.height * map.resolution, map.resolution):
+        for j in np.arange(0, np.round(map.height * map.resolution), 1):
             possible_positions.append((i, j))
 
     possible_laser_scans = []
@@ -122,9 +123,16 @@ def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[float, flo
     position_candidate = None
     min_distance = np.inf
     for position, amount in zip(possible_positions, amount_of_walls):
-        distance = abs(amount - real_amount_of_walls)
+        distance = np.abs(amount - real_amount_of_walls)
         if distance < min_distance:
             position_candidate = position
             min_distance = distance
 
-    return position_candidate
+    x_idx = int(np.round(position_candidate[0] / map.resolution))
+    y_idx = int(np.round(position_candidate[1] / map.resolution))
+    if (map.origin[0]) < 0:
+        x_idx += int(np.round(np.abs(map.origin[0]) / map.resolution))
+    if (map.origin[1]) < 0:
+        y_idx += int(np.round(np.abs(map.origin[1]) / map.resolution))
+
+    return (x_idx, y_idx), Point(position_candidate[0], position_candidate[1])

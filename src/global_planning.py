@@ -79,7 +79,6 @@ class BFSPlanner(GlobalPlanner):
             if curr in visited_nodes:
                 continue
             visited_nodes.add(curr)
-            print(curr.x, curr.y)
 
             if (curr.x, curr.y) == goal_position:
                 path = []

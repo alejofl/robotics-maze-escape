@@ -15,4 +15,8 @@ class Map:
 class Point:
     x: float
     y: float
+
+
+@dataclass
+class MapPoint(Point):
     wall: bool

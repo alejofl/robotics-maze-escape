@@ -85,7 +85,7 @@ def get_laser_scan(map_resolution: float) -> np.ndarray:
     return np.array(points)
 
 
-def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[Tuple[int, int], Point]:
+def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[Tuple[int, int], Point, np.ndarray]:
     """
     Predict the robot position based on the laser scan data, using K-Nearest Neighbors (kNN) algorithm.
     
@@ -121,11 +121,13 @@ def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[Tuple[int,
         amount_of_walls.append(np.sum(knn.predict(laser_scan)))
 
     position_candidate = None
+    laser_scan_candidate = None
     min_distance = np.inf
-    for position, amount in zip(possible_positions, amount_of_walls):
+    for position, laser_scan, amount in zip(possible_positions, possible_laser_scans, amount_of_walls):
         distance = np.abs(amount - real_amount_of_walls)
         if distance < min_distance:
             position_candidate = position
+            laser_scan_candidate = laser_scan
             min_distance = distance
 
     x_idx = int(np.round(position_candidate[0] / map.resolution))
@@ -135,4 +137,4 @@ def predict_robot_position(map: Map, laser_scan: np.ndarray) -> Tuple[Tuple[int,
     if (map.origin[1]) < 0:
         y_idx += int(np.round(np.abs(map.origin[1]) / map.resolution))
 
-    return (x_idx, y_idx), Point(position_candidate[0], position_candidate[1])
+    return (x_idx, y_idx), Point(*position_candidate), np.array([Point(*p) for p in laser_scan_candidate])

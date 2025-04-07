@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import rospy
 from localization import get_map, deserialize_map, get_laser_scan, predict_robot_position
+from global_planning import GlobalPlanner
 from visualization import plot_map_and_laser_scan
 
 
@@ -11,4 +12,4 @@ if __name__ == "__main__":
     laser_scan = get_laser_scan(map.resolution)
     # plot_map_and_laser_scan(map, laser_scan)
     robot_position_idx, robot_position  = predict_robot_position(map, laser_scan)
-    print(f"Robot position: {robot_position_idx}, {robot_position}, {map.map[robot_position_idx[0]][robot_position_idx[1]]}")
+    global_path = GlobalPlanner.get_planner("bfs", map, robot_position_idx).plan()

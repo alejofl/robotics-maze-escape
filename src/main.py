@@ -3,7 +3,7 @@ import rospy
 import numpy as np
 from custom_types import Point
 from localization import get_map, deserialize_map, get_laser_scan, predict_robot_position
-from global_planning import GlobalPlanner
+from global_planning import GlobalPlanner, GOAL_POSITIONS
 from visualization import Plotter
 from emission import GlobalPlanEmmiter
 
@@ -12,6 +12,7 @@ if __name__ == "__main__":
     rospy.init_node("maze_escape")
     global_planner_algorithm = rospy.get_param("/maze_escape/global_planner_algorithm")
     enable_plotting = rospy.get_param('/maze_escape/enable_plotting')
+    goal = rospy.get_param('/maze_escape/goal') - 1
 
     global_plan_emitter = GlobalPlanEmmiter()
 
@@ -30,7 +31,9 @@ if __name__ == "__main__":
             .with_grid() \
             .show()
     robot_position_idx, robot_position, laser_scan  = predict_robot_position(map, laser_scan)
-    global_path = GlobalPlanner.get_planner(global_planner_algorithm, map, robot_position_idx).plan()
+    global_path = GlobalPlanner \
+        .get_planner(global_planner_algorithm, map, robot_position_idx) \
+        .plan(GOAL_POSITIONS[goal])
     if enable_plotting:
         Plotter() \
             .with_size(8, 8) \

@@ -63,7 +63,7 @@ class GlobalPlanner(ABC):
             return DFSPlanner(map, initial_position)
         elif planner_algorithm.lower() == "bfs":
             return BFSPlanner(map, initial_position)
-        elif planner_algorithm.lower() == "a*":
+        elif planner_algorithm.lower() == "astar":
             pass
         elif planner_algorithm.lower() == "dijkstra":
             pass

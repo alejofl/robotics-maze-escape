@@ -13,6 +13,8 @@ if __name__ == "__main__":
     global_planner_algorithm = rospy.get_param("/maze_escape/global_planner_algorithm")
     enable_plotting = rospy.get_param('/maze_escape/enable_plotting')
 
+    global_plan_emitter = GlobalPlanEmmiter()
+
     map_data = get_map()
     map = deserialize_map(map_data)
     laser_scan = get_laser_scan(map.resolution)
@@ -40,4 +42,4 @@ if __name__ == "__main__":
             .with_ticks(np.arange(-1, 5, 1), np.arange(-1, 5, 1)) \
             .with_grid() \
             .show()
-    GlobalPlanEmmiter().emit(global_path)
+    global_plan_emitter.emit(global_path)

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import rospy
-import uuid
 from typing import Any, List
 from custom_types import Point
 from nav_msgs.msg import Path as RosPath
@@ -24,18 +23,16 @@ class Emitter(ABC):
 
 class GlobalPlanEmmiter(Emitter):
     def __init__(self):
-        super().__init__("/myPath", RosPath)
+        super().__init__("/maze_escape/global_plan", RosPath)
 
     def emit(self, data: Any):
         data: List[Point] = data
         message = RosPath()
 
-        message.header.seq = 0
         message.header.stamp = rospy.Time.now()
         message.header.frame_id = "odom"
         for point in data:
             pose = RosPoseStamped()
-            pose.header.seq = 0
             pose.header.stamp = rospy.Time.now()
             pose.header.frame_id = "odom"
             pose.pose.position.x = point.x

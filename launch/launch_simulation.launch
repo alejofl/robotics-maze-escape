@@ -10,6 +10,7 @@
   <arg name="z_pos" default="0.0"/>
 
   <arg name="global_planner_algorithm" default="bfs" doc="global planner algorithm [bfs, dfs, astar, dijkstra]"/>
+  <arg name="global_planner_heuristic" default="manhattan" doc="global planner heuristic (only needed for A* algorithm) [manhattan, euclidean]"/>
   <arg name="enable_plotting" default="false"/>
   <arg name="goal" default="1" doc="define goal to reach [1 (bottom left), 2 (top right)]"/>
 
@@ -48,6 +49,7 @@
 
   <node pkg="robotics-maze-escape" type="main.py" name="maze_escape" output="screen" clear_params="true">
     <param name="global_planner_algorithm" value="$(arg global_planner_algorithm)"/>
+    <param name="global_planner_heuristic" value="$(arg global_planner_heuristic)"/>
     <param name="enable_plotting" value="$(arg enable_plotting)"/>
     <param name="goal" value="$(arg goal)"/>
   </node>

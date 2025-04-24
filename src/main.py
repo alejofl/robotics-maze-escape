@@ -11,6 +11,7 @@ from emission import GlobalPlanEmmiter
 if __name__ == "__main__":
     rospy.init_node("maze_escape")
     global_planner_algorithm = rospy.get_param("/maze_escape/global_planner_algorithm")
+    global_planner_heuristic = rospy.get_param("/maze_escape/global_planner_heuristic")
     enable_plotting = rospy.get_param('/maze_escape/enable_plotting')
     goal = rospy.get_param('/maze_escape/goal') - 1
 
@@ -32,7 +33,7 @@ if __name__ == "__main__":
             .show()
     robot_position_idx, robot_position, laser_scan  = predict_robot_position(map, laser_scan)
     global_path = GlobalPlanner \
-        .get_planner(global_planner_algorithm, map, robot_position_idx) \
+        .get_planner(global_planner_algorithm, map, robot_position_idx, global_planner_heuristic) \
         .plan(GOAL_POSITIONS[goal])
     if enable_plotting:
         Plotter() \

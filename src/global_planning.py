@@ -100,7 +100,7 @@ class GlobalPlanner(ABC):
         elif planner_algorithm.lower() == "astar":
             return AStarPlanner(map, initial_position, heuristic)
         elif planner_algorithm.lower() == "dijkstra":
-            pass
+            return AStarPlanner(map, initial_position, "dijkstra")
         else:
             raise ValueError(f"Unknown planner algorithm: {planner_algorithm}")
         
@@ -135,6 +135,8 @@ class GlobalPlanner(ABC):
             return lambda node, goal_position: node.manhattan_distance(goal_position)
         elif heuristic.lower() == "euclidean":
             return lambda node, goal_position: node.euclidean_distance(goal_position)
+        elif heuristic.lower() == "dijkstra":
+            return lambda node, goal_position: 0
         else:
             raise ValueError(f"Unknown heuristic: {heuristic}")
 

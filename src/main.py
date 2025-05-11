@@ -47,3 +47,12 @@ if __name__ == "__main__":
             .with_grid() \
             .show()
     global_plan_emitter.emit(global_path)
+
+    # Para la primera iteración, tenemos la posición del robot. A partir de ahí tenemos que irla calculando con cada movimiento
+    # Hacer un poco de voodoo matricial para tener el goal en función de la posición del robot. Pero está todo claro en el cookbook
+    # Crear varias (vt, wt) para simular para dónde se mueve el robot (Considerar usar el par (vt, wt) anterior)
+    # Hacer la simulación con lo de Kinematics y pasar los resultados por una función de costo
+    # Quedarse con el que tenga menor costo
+    # Hacer un publish de la velocidad y la rotación
+    # Repeat hasta llegar al último goal, después de eso hacer un publish de (0, 0) para que se frene
+

@@ -1,26 +1,30 @@
 
+from emission import RobotMovementEmitter
 import rospy
 import tf2_ros
+from nav_msgs.msg import Path as RosPath
 
 from scipy.spatial.transform import Rotation as R
 
-rospy.init_node("local_planner") # <- If not already initialised, create your node here
+rospy.init_node("local_planner")
 tfBuffer = tf2_ros.Buffer()
 listener = tf2_ros.TransformListener(tfBuffer)
 
 
 class RobotMovement:
 
-    
-
-    # Podemos hacer que el robot reciba los goals, en lugar de emitirlos en un topic
-    def __init__(self, initial_position: Point, initial_orientation: float, goals: np.ndarray):
+    def __init__(self, initial_position: Point, initial_orientation: float):
         self.position = initial_position
         self.orientation = initial_orientation
         self.vt = 0.0
         self.wt = 0.0
-        self.goals = goals
+        # Esto es bastante trucho
+        def callback(data):
+            self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
+        rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
+        rospy.wait_for_message("/maze_escape/global_plan", RosPath)
         self.current_goal_index = 0
+        self.movpub = RobotMovementEmitter()
 
     def _localiseRobot():
         """Localises the robot towards the 'map' coordinate frame. Returns pose in format (x,y,theta)"""
@@ -73,6 +77,42 @@ class RobotMovement:
 
     # Se puede mejorar considerando los vt y wt anteriores
     def create_vt_and_wt(self):
-        for vt in np.arange(0, 1.0, 0.1):
-            for wt in np.arange(-1.4, 1.4, 0.05):
+        for vt in np.arange(-2, 2, 0.4):
+            for wt in np.arange(-10, 10, 0.5):
                 yield vt, wt
+
+    def alt_create_vt_and_wt(self, previous_vt, previous_wt):
+        for vt in np.arange(previous_vt-2, previous_vt+2, 0.4):
+            for wt in np.arange(previous_wt-10,previous_wt+10, 0.5):
+                yield vt, wt
+
+    def costFn(pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
+        x_error = np.abs(pose[0] - goalpose[0])
+        y_error = np.abs(pose[1] - goalpose[1])
+        theta_error = np.abs(pose[2] - goalpose[2])
+        if theta_error > np.pi:
+            theta_error -= 2*np.pi
+        elif theta_error < -np.pi:
+            theta_error += 2*np.pi
+        
+        error_vector = np.array([
+            x_error,
+            y_error,
+            theta_error
+        ])
+
+        s_weight_matrix = np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 0.3]
+        ])
+
+        c_weight_matrix = np.array([
+            [0.1, 0],
+            [0, 0.1]
+        ])
+
+        return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
+
+    def move_robot(self, vt, wt):
+        self.movpub.emit([vt, wt])

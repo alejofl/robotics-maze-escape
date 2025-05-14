@@ -1,37 +1,51 @@
 
 import copy
+from custom_types import Point
 from emission import RobotMovementEmitter
 from kinematics import PT2Block, forwardKinematics
 from matrix_manipulation import inverse_tf_mat, pose2tf_mat, tf_mat2pose
 import rospy
 import tf2_ros
 from nav_msgs.msg import Path as RosPath
+import numpy as np
+import numpy.typing as npt
 
 from scipy.spatial.transform import Rotation as R
-
-rospy.init_node("local_planner")
-tfBuffer = tf2_ros.Buffer()
-listener = tf2_ros.TransformListener(tfBuffer)
 
 
 class RobotMovement:
 
-    def __init__(self, initial_position, initial_orientation):
-        self.robot_pose = [initial_position[0], initial_position[1], initial_orientation]
+    def __init__(self, initial_position: Point, initial_orientation, goals):
+        
+        self.tfBuffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tfBuffer)
+        self.robot_pose = [initial_position.x, initial_position.y, initial_orientation]
+        self.got_info = False
         # Esto es bastante trucho
         self.goals = []
+        print("Waiting for global plan...")
         def callback(data):
+            print("callback!!!")
+            self.got_info = True
             self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
+            print(f"Received {len(self.goals)} goals")
+        rospy.sleep(1)
         rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
-        rospy.wait_for_message("/maze_escape/global_plan", RosPath)
+        
+        # ESTO ES TRUCHISIMO PERO BUENO
+        self.goals = goals # BORRAR ESTO
+        self.got_info = True # BORRAR ESTO
+        print(f"Received {goals} goals") # BORRAR ESTO
+        
         self.current_goal_index = 0
         self.movpub = RobotMovementEmitter()
+        print(f"Robot initial position: {self.robot_pose}")
 
     def _localiseRobot(self):
         """Localises the robot towards the 'map' coordinate frame. Returns pose in format (x,y,theta)"""
         while True:
             try:
-                trans = tfBuffer.lookup_transform('map', 'base_link', rospy.Time(0), rospy.Duration(1.0))
+                trans = self.tfBuffer.lookup_transform('map', 'base_link', rospy.Time(0), rospy.Duration(1.0))
                 break
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
                 print(f"Robot localisation took longer than 1 sec, {e}")
@@ -101,6 +115,10 @@ class RobotMovement:
         return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
 
     def run_robot(self, robotModelPT2: PT2Block, horizon, ts: float):
+        while not self.got_info:
+            print("Waiting for global plan...")
+            rospy.sleep(1)
+
         first = True
         while True:
             curr_goal_pose = self._get_goal_in_robot_coordinates()

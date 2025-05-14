@@ -51,10 +51,10 @@ if __name__ == "__main__":
         
     global_plan_emitter.emit(global_path)
 
-    movement = RobotMovement(robot_position, 0.0)
-    ts = 0.4
-    pt_bloc = PT2Block(ts=ts)
-    movement.run_robot(pt_bloc, 8, ts)
+    #movement = RobotMovement(robot_position, 0.0, global_path)
+    #ts = 0.2
+    #pt_bloc = PT2Block(ts=ts)
+    #movement.run_robot(pt_bloc, 8, ts)
 
     # DONE Para la primera iteración, tenemos la posición del robot. A partir de ahí tenemos que irla calculando con cada movimiento
     # DONE Hacer un poco de voodoo matricial para tener el goal en función de la posición del robot. Pero está todo claro en el cookbook

@@ -1,4 +1,6 @@
 #!/usr/bin/python
+from kinematics import PT2Block
+from local_planning import RobotMovement
 import rospy
 import numpy as np
 from custom_types import Point
@@ -49,12 +51,17 @@ if __name__ == "__main__":
         
     global_plan_emitter.emit(global_path)
 
+    movement = RobotMovement(robot_position, 0.0)
+    ts = 0.4
+    pt_bloc = PT2Block(ts=ts)
+    movement.run_robot(pt_bloc, 8, ts)
+
     # DONE Para la primera iteración, tenemos la posición del robot. A partir de ahí tenemos que irla calculando con cada movimiento
     # DONE Hacer un poco de voodoo matricial para tener el goal en función de la posición del robot. Pero está todo claro en el cookbook
     # DONE Crear varias (vt, wt) para simular para dónde se mueve el robot (Considerar usar el par (vt, wt) anterior)
     # DONE Hacer la simulación con lo de Kinematics
     # DONE Hacer la función de costo
-    # Quedarse con el que tenga menor costo
+    # DONE Quedarse con el que tenga menor costo
     # DONE Hacer un publish de la velocidad y la rotación
-    # Hacer el ciclo, después de eso hacer un publish de (0, 0) para que se frene
+    # DONE Hacer el ciclo, después de eso hacer un publish de (0, 0) para que se frene
 

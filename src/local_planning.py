@@ -1,5 +1,8 @@
 
+import copy
 from emission import RobotMovementEmitter
+from kinematics import PT2Block, forwardKinematics
+from matrix_manipulation import inverse_tf_mat, pose2tf_mat, tf_mat2pose
 import rospy
 import tf2_ros
 from nav_msgs.msg import Path as RosPath
@@ -13,12 +16,10 @@ listener = tf2_ros.TransformListener(tfBuffer)
 
 class RobotMovement:
 
-    def __init__(self, initial_position: Point, initial_orientation: float):
-        self.position = initial_position
-        self.orientation = initial_orientation
-        self.vt = 0.0
-        self.wt = 0.0
+    def __init__(self, initial_position, initial_orientation):
+        self.robot_pose = [initial_position[0], initial_position[1], initial_orientation]
         # Esto es bastante trucho
+        self.goals = []
         def callback(data):
             self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
         rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
@@ -26,7 +27,7 @@ class RobotMovement:
         self.current_goal_index = 0
         self.movpub = RobotMovementEmitter()
 
-    def _localiseRobot():
+    def _localiseRobot(self):
         """Localises the robot towards the 'map' coordinate frame. Returns pose in format (x,y,theta)"""
         while True:
             try:
@@ -42,51 +43,24 @@ class RobotMovement:
             trans.transform.rotation.z,
             trans.transform.rotation.w]).as_euler("xyz")[2]
         
-        return np.array([
+        self.robot_pose = np.array([
             trans.transform.translation.x,
             trans.transform.translation.y,
             theta])
 
-
-    def pose2tf_mat(pose: np.Array):
-        X = 0, Y = 1, THETA = 2
-        return np.array([
-            [np.cos(pose[THETA]), -np.sin(pose[THETA]), pose[X]],
-            [np.sin(pose[THETA]), np.cos(pose[THETA]), pose[Y]],
-            [0, 0, 1]
-        ])
-
-    def tf_mat2pose(mat: np.Array):
-        return np.array([
-            mat[0][2],
-            mat[1][2],
-            np.arctan2(mat[1][0], mat[0][0])
-        ])
-
-    def inverse_tf_mat(transf_matrix: np.Array):
-        """Inverts a transformation matrix so that it can be multiplied with another one (inv(robot_position) * next_goal)"""
-        return np.linalg.inv(transf_matrix)
-
-    def get_goal_in_robot_coordinates(self):
+    def _get_goal_in_robot_coordinates(self):
         """Returns the goal in the robot coordinates"""
-        robot_pose = self._localiseRobot() # No estariamos usando el inicial
-        robot_tf_mat = self.pose2tf_mat(robot_pose)
-        goal_tf_mat = self.pose2tf_mat(self.goals[self.current_goal_index])
-        goal_in_robot_coordinates = self.inverse_tf_mat(robot_tf_mat) @ goal_tf_mat # Por qué era un arroba para multiplicar matrices no?
-        return self.tf_mat2pose(goal_in_robot_coordinates)
+        robot_tf_mat = pose2tf_mat(self.robot_pose)
+        goal_tf_mat = pose2tf_mat(self.goals[self.current_goal_index])
+        goal_in_robot_coordinates = inverse_tf_mat(robot_tf_mat) @ goal_tf_mat # Por qué era un arroba para multiplicar matrices no?
+        return tf_mat2pose(goal_in_robot_coordinates)
 
-    # Se puede mejorar considerando los vt y wt anteriores
-    def create_vt_and_wt(self):
-        for vt in np.arange(-2, 2, 0.4):
-            for wt in np.arange(-10, 10, 0.5):
-                yield vt, wt
-
-    def alt_create_vt_and_wt(self, previous_vt, previous_wt):
+    def _create_vt_and_wt(self, previous_vt, previous_wt):
         for vt in np.arange(previous_vt-2, previous_vt+2, 0.4):
             for wt in np.arange(previous_wt-10,previous_wt+10, 0.5):
                 yield vt, wt
 
-    def costFn(pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
+    def _costFn(pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
         x_error = np.abs(pose[0] - goalpose[0])
         y_error = np.abs(pose[1] - goalpose[1])
         theta_error = np.abs(pose[2] - goalpose[2])
@@ -114,5 +88,54 @@ class RobotMovement:
 
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
 
-    def move_robot(self, vt, wt):
-        self.movpub.emit([vt, wt])
+
+    def _is_goal_reached(self, goalpose: npt.ArrayLike) -> bool:
+        robot_pose = self.robot_pose
+        x_error = np.abs(robot_pose[0] - goalpose[0])
+        y_error = np.abs(robot_pose[1] - goalpose[1])
+        theta_error = np.abs(robot_pose[2] - goalpose[2])
+        if theta_error > np.pi:
+            theta_error -= 2*np.pi
+        elif theta_error < -np.pi:
+            theta_error += 2*np.pi
+        return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
+
+    def run_robot(self, robotModelPT2: PT2Block, horizon, ts: float):
+        first = True
+        while True:
+            curr_goal_pose = self._get_goal_in_robot_coordinates()
+            while not self._is_goal_reached(curr_goal_pose):
+                if not first:
+                    self._localiseRobot()
+                else:
+                    curr_vt = 0
+                    curr_wt = 0
+                    first = False
+                
+                costs = []
+                index = 0
+                min_cost_index = 0
+                min_cost = float("inf")
+                
+                for (vt, wt) in self._create_vt_and_wt(curr_vt, curr_wt):
+                    forwardSimPT2 = copy.deepcopy(robotModelPT2)
+                    forwardpose = [0,0,0]
+                    curr_cost = 0
+                    for i in range(horizon):
+                        vt_dynamic = forwardSimPT2.update(vt)
+                        forwardpose = forwardKinematics([vt_dynamic, wt], forwardpose, ts)
+                        curr_cost += self._costFn(self.robot_pose, curr_goal_pose, [vt, wt])
+                    if curr_cost < min_cost:
+                        min_cost = curr_cost
+                        min_cost_index = index
+                    costs.append((vt, wt, curr_cost))   # Nos sirve quedarnos con todos los vt y wt para hacer el plot
+                    index += 1
+                curr_vt, curr_wt = costs[min_cost_index][0], costs[min_cost_index][1]
+                self.movpub.emit([curr_vt, curr_wt])
+
+            self.current_goal_index += 1
+            if self.current_goal_index >= len(self.goals):
+                self.movpub.emit([0, 0])
+                print(f"Goal of index {self.current_goal_index-1} reached")
+                break
+

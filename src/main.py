@@ -48,7 +48,6 @@ if __name__ == "__main__":
             .with_ticks(np.arange(-1, 5, 1), np.arange(-1, 5, 1)) \
             .with_grid() \
             .show()
-        
     global_plan_emitter.emit(global_path)
 
     #movement = RobotMovement(robot_position, 0.0, global_path)
@@ -64,4 +63,4 @@ if __name__ == "__main__":
     # DONE Quedarse con el que tenga menor costo
     # DONE Hacer un publish de la velocidad y la rotación
     # DONE Hacer el ciclo, después de eso hacer un publish de (0, 0) para que se frene
-
+    

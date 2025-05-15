@@ -1,8 +1,8 @@
 
 import numpy as np
-import numpy.typing as npt
+import typing as Any
 
-def forwardKinematics(control: npt.Any, lastPose: npt.Any, dt: float, dtype=np.float64) -> np.ndarray:  
+def forwardKinematics(control: Any, lastPose: Any, dt: float, dtype=np.float64) -> np.ndarray:  
     """Mobile robot forward kinematics (see Thrun Probabilistic Robotics)"""
     if not isinstance(lastPose, np.ndarray):  # Check input formatting
         lastPose = np.array(lastPose, dtype=dtype)

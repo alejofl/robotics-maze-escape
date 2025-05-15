@@ -8,7 +8,6 @@ import rospy
 import tf2_ros
 from nav_msgs.msg import Path as RosPath
 import numpy as np
-import numpy.typing as npt
 
 from scipy.spatial.transform import Rotation as R
 
@@ -74,7 +73,7 @@ class RobotMovement:
             for wt in np.arange(previous_wt-10,previous_wt+10, 0.5):
                 yield vt, wt
 
-    def _costFn(pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
+    def _costFn(pose: np.ndarray, goalpose: np.ndarray, control: np.ndarray) -> float:
         x_error = np.abs(pose[0] - goalpose[0])
         y_error = np.abs(pose[1] - goalpose[1])
         theta_error = np.abs(pose[2] - goalpose[2])
@@ -103,7 +102,7 @@ class RobotMovement:
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
 
 
-    def _is_goal_reached(self, goalpose: npt.ArrayLike) -> bool:
+    def _is_goal_reached(self, goalpose: np.ndarray) -> bool:
         robot_pose = self.robot_pose
         x_error = np.abs(robot_pose[0] - goalpose[0])
         y_error = np.abs(robot_pose[1] - goalpose[1])

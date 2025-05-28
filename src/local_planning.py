@@ -8,6 +8,8 @@ import rospy
 import tf2_ros
 from nav_msgs.msg import Path as RosPath
 import numpy as np
+import numpy.typing as npt
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
 
 from scipy.spatial.transform import Rotation as R
 
@@ -19,22 +21,27 @@ class RobotMovement:
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
         self.robot_pose = [initial_position.x, initial_position.y, initial_orientation]
-        self.got_info = False
-        # Esto es bastante trucho
-        self.goals = []
-        print("Waiting for global plan...")
-        def callback(data):
-            print("callback!!!")
-            self.got_info = True
-            self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
-            print(f"Received {len(self.goals)} goals")
-        rospy.sleep(1)
-        rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
         
-        # ESTO ES TRUCHISIMO PERO BUENO
-        self.goals = goals # BORRAR ESTO
-        self.got_info = True # BORRAR ESTO
+        # print("Waiting for global plan...")
+        # def callback(data):
+        #     print("callback!!!")
+        #     self.got_info = True
+        #     self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
+        #     print(f"Received {len(self.goals)} goals")
+        # rospy.sleep(1)
+        # rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
+        
+        self.goals = []
+        # TODO: LOS GOALS AHORA ESTÁN COMO MapPoint, NO COMO PoseStamped. NOS FALTAN LOS THETA
+        for goal in goals:
+            # curr_goal = RosPoseStamped()
+            # curr_goal.pose.position.x = goal.x
+            # curr_goal.pose.position.y = goal.y
+            # curr_goal.pose.position.z = 0.0
+            curr_goal = np.array([goal.x, goal.y, 0.0])
+            self.goals.append(curr_goal)
         print(f"Received {goals} goals") # BORRAR ESTO
+        print(f"Goals turned into poses: {self.goals}")
         
         self.current_goal_index = 0
         self.movpub = RobotMovementEmitter()
@@ -64,16 +71,16 @@ class RobotMovement:
     def _get_goal_in_robot_coordinates(self):
         """Returns the goal in the robot coordinates"""
         robot_tf_mat = pose2tf_mat(self.robot_pose)
-        goal_tf_mat = pose2tf_mat(self.goals[self.current_goal_index])
+        goal_tf_mat = pose2tf_mat(self.goals[self.current_goal_index])  # Esto en realidad es de array a tf_mat, pero se entiende
         goal_in_robot_coordinates = inverse_tf_mat(robot_tf_mat) @ goal_tf_mat # Por qué era un arroba para multiplicar matrices no?
         return tf_mat2pose(goal_in_robot_coordinates)
 
     def _create_vt_and_wt(self, previous_vt, previous_wt):
-        for vt in np.arange(previous_vt-2, previous_vt+2, 0.4):
-            for wt in np.arange(previous_wt-10,previous_wt+10, 0.5):
+        for vt in np.arange(previous_vt-2, previous_vt+2 +0.1, 0.4):
+            for wt in np.arange(previous_wt-10, previous_wt+10 +0.1, 0.5):
                 yield vt, wt
 
-    def _costFn(pose: np.ndarray, goalpose: np.ndarray, control: np.ndarray) -> float:
+    def _costFn(self, pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
         x_error = np.abs(pose[0] - goalpose[0])
         y_error = np.abs(pose[1] - goalpose[1])
         theta_error = np.abs(pose[2] - goalpose[2])
@@ -102,7 +109,7 @@ class RobotMovement:
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
 
 
-    def _is_goal_reached(self, goalpose: np.ndarray) -> bool:
+    def _is_goal_reached(self, goalpose: npt.ArrayLike) -> bool:
         robot_pose = self.robot_pose
         x_error = np.abs(robot_pose[0] - goalpose[0])
         y_error = np.abs(robot_pose[1] - goalpose[1])
@@ -114,10 +121,6 @@ class RobotMovement:
         return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
 
     def run_robot(self, robotModelPT2: PT2Block, horizon, ts: float):
-        while not self.got_info:
-            print("Waiting for global plan...")
-            rospy.sleep(1)
-
         first = True
         while True:
             curr_goal_pose = self._get_goal_in_robot_coordinates()

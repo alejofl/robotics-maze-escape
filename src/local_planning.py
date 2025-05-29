@@ -76,9 +76,11 @@ class RobotMovement:
         return tf_mat2pose(goal_in_robot_coordinates)
 
     def _create_vt_and_wt(self, previous_vt, previous_wt):
-        for vt in np.arange(previous_vt-2, previous_vt+2 +0.1, 0.4):
-            for wt in np.arange(previous_wt-10, previous_wt+10 +0.1, 0.5):
-                yield vt, wt
+        values = []
+        for vt in np.arange(-0.2, 0.2 +0.1, 0.025):
+            for wt in np.arange(-10, 10 +0.1, 0.5):
+                values.append((vt, wt))
+        return values
 
     def _costFn(self, pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
         x_error = np.abs(pose[0] - goalpose[0])
@@ -98,7 +100,7 @@ class RobotMovement:
         s_weight_matrix = np.array([
             [1, 0, 0],
             [0, 1, 0],
-            [0, 0, 0.3]
+            [0, 0, 0.0] # Podría ser 0.3
         ])
 
         c_weight_matrix = np.array([
@@ -108,25 +110,32 @@ class RobotMovement:
 
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
 
-
+    # We directly check the goalpose in the robot coordinates
     def _is_goal_reached(self, goalpose: npt.ArrayLike) -> bool:
-        robot_pose = self.robot_pose
-        x_error = np.abs(robot_pose[0] - goalpose[0])
-        y_error = np.abs(robot_pose[1] - goalpose[1])
-        theta_error = np.abs(robot_pose[2] - goalpose[2])
-        if theta_error > np.pi:
-            theta_error -= 2*np.pi
-        elif theta_error < -np.pi:
-            theta_error += 2*np.pi
-        return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
+        #robot_pose = self.robot_pose
+        #x_error = np.abs(robot_pose[0] - goalpose[0])
+        #y_error = np.abs(robot_pose[1] - goalpose[1])
+        #theta_error = np.abs(robot_pose[2] - goalpose[2])
+        #if theta_error > np.pi:
+        #    theta_error -= 2*np.pi
+        #elif theta_error < -np.pi:
+        #    theta_error += 2*np.pi
+        #print(f"Robot pose: {robot_pose}, Goal pose: {goalpose}, Errors: x={x_error}, y={y_error}, theta={theta_error}")
+        #return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
+        #print(f"Goal pose: {goalpose}")
+        return goalpose[0] < 0.1 and goalpose[1] < 0.1# and np.abs(goalpose[2]) < 0.2
 
     def run_robot(self, robotModelPT2: PT2Block, horizon, ts: float):
         first = True
         while True:
             curr_goal_pose = self._get_goal_in_robot_coordinates()
+            print(f"Current goal pose: {curr_goal_pose}")
+            print_counter = 0
             while not self._is_goal_reached(curr_goal_pose):
                 if not first:
                     self._localiseRobot()
+                    curr_goal_pose = self._get_goal_in_robot_coordinates()
+                    #print(f"Robot pose: {self.robot_pose}")
                 else:
                     curr_vt = 0
                     curr_wt = 0
@@ -136,7 +145,7 @@ class RobotMovement:
                 index = 0
                 min_cost_index = 0
                 min_cost = float("inf")
-                
+                print_counter += 1
                 for (vt, wt) in self._create_vt_and_wt(curr_vt, curr_wt):
                     forwardSimPT2 = copy.deepcopy(robotModelPT2)
                     forwardpose = [0,0,0]
@@ -144,15 +153,23 @@ class RobotMovement:
                     for i in range(horizon):
                         vt_dynamic = forwardSimPT2.update(vt)
                         forwardpose = forwardKinematics([vt_dynamic, wt], forwardpose, ts)
-                        curr_cost += self._costFn(self.robot_pose, curr_goal_pose, [vt, wt])
+                        curr_cost += self._costFn(forwardpose, curr_goal_pose, [vt, wt])
                     if curr_cost < min_cost:
                         min_cost = curr_cost
                         min_cost_index = index
-                    costs.append((vt, wt, curr_cost))   # Nos sirve quedarnos con todos los vt y wt para hacer el plot
+                    costs.append((vt, wt, curr_cost))   # This data is useful for plotting
                     index += 1
                 curr_vt, curr_wt = costs[min_cost_index][0], costs[min_cost_index][1]
+                if print_counter%10 == 0:
+                    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
+                    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
+                    print(f"Similar costs: {costs[min_cost_index-2:min_cost_index+3]}")
+                    #print(f"costs: {costs}")
+                    print(f"Current goal pose: {curr_goal_pose}")
+                
                 self.movpub.emit([curr_vt, curr_wt])
 
+            print(f"Goal of index {self.current_goal_index} reached")
             self.current_goal_index += 1
             if self.current_goal_index >= len(self.goals):
                 self.movpub.emit([0, 0])

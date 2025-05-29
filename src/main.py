@@ -48,12 +48,13 @@ if __name__ == "__main__":
             .with_ticks(np.arange(-1, 5, 1), np.arange(-1, 5, 1)) \
             .with_grid() \
             .show()
+        
     global_plan_emitter.emit(global_path)
 
-    #movement = RobotMovement(robot_position, 0.0, global_path)
-    #ts = 0.2
-    #pt_bloc = PT2Block(ts=ts)
-    #movement.run_robot(pt_bloc, 8, ts)
+    movement = RobotMovement(robot_position, 0.0, global_path)
+    ts = 0.4
+    pt_bloc = PT2Block(ts=ts)
+    movement.run_robot(pt_bloc, 5, ts)
 
     # DONE Para la primera iteración, tenemos la posición del robot. A partir de ahí tenemos que irla calculando con cada movimiento
     # DONE Hacer un poco de voodoo matricial para tener el goal en función de la posición del robot. Pero está todo claro en el cookbook
@@ -63,4 +64,4 @@ if __name__ == "__main__":
     # DONE Quedarse con el que tenga menor costo
     # DONE Hacer un publish de la velocidad y la rotación
     # DONE Hacer el ciclo, después de eso hacer un publish de (0, 0) para que se frene
-    
+

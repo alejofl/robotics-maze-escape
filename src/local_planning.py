@@ -33,13 +33,16 @@ class RobotMovement:
         
         self.goals = []
         # TODO: LOS GOALS AHORA ESTÁN COMO MapPoint, NO COMO PoseStamped. NOS FALTAN LOS THETA
-        for goal in goals:
+        #for goal in goals:
             # curr_goal = RosPoseStamped()
             # curr_goal.pose.position.x = goal.x
             # curr_goal.pose.position.y = goal.y
             # curr_goal.pose.position.z = 0.0
-            curr_goal = np.array([goal.x, goal.y, 0.0])
-            self.goals.append(curr_goal)
+        #self.goals.append(np.array([goal.x, goal.y, 0.0]) for goal in goals)
+        self.goals.append(np.array([3,1,0]))
+        self.goals.append(np.array([3,2,0]))
+        self.goals.append(np.array([2,2,0]))
+        
         print(f"Received {goals} goals") # BORRAR ESTO
         print(f"Goals turned into poses: {self.goals}")
         
@@ -77,7 +80,7 @@ class RobotMovement:
 
     def _create_vt_and_wt(self, previous_vt, previous_wt):
         values = []
-        for vt in np.arange(-0.2, 0.2 +0.1, 0.025):
+        for vt in np.arange(-0.2, 0.2 +0.1, 0.1):
             for wt in np.arange(-10, 10 +0.1, 0.5):
                 values.append((vt, wt))
         return values
@@ -104,8 +107,8 @@ class RobotMovement:
         ])
 
         c_weight_matrix = np.array([
-            [0.1, 0],
-            [0, 0.1]
+            [0, 0],
+            [0, 0]  # Sign that the horizon should be higher
         ])
 
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
@@ -137,6 +140,7 @@ class RobotMovement:
                     curr_goal_pose = self._get_goal_in_robot_coordinates()
                     #print(f"Robot pose: {self.robot_pose}")
                 else:
+                    print(f"Robot pose: {self.robot_pose}")
                     curr_vt = 0
                     curr_wt = 0
                     first = False
@@ -146,26 +150,28 @@ class RobotMovement:
                 min_cost_index = 0
                 min_cost = float("inf")
                 print_counter += 1
-                for (vt, wt) in self._create_vt_and_wt(curr_vt, curr_wt):
+                for control in self._create_vt_and_wt(curr_vt, curr_wt):
                     forwardSimPT2 = copy.deepcopy(robotModelPT2)
                     forwardpose = [0,0,0]
                     curr_cost = 0
                     for i in range(horizon):
-                        vt_dynamic = forwardSimPT2.update(vt)
-                        forwardpose = forwardKinematics([vt_dynamic, wt], forwardpose, ts)
-                        curr_cost += self._costFn(forwardpose, curr_goal_pose, [vt, wt])
+                        control_sim = copy.deepcopy(control)
+                        v_t, w_t = control
+                        vt_dynamic = forwardSimPT2.update(v_t)
+                        control_dym = [vt_dynamic, w_t]
+                        forwardpose = forwardKinematics(control_dym, forwardpose, ts)
+                        curr_cost += self._costFn(forwardpose, curr_goal_pose, control_sim)
                     if curr_cost < min_cost:
                         min_cost = curr_cost
                         min_cost_index = index
-                    costs.append((vt, wt, curr_cost))   # This data is useful for plotting
+                    costs.append((control_sim, curr_cost))   # This data is useful for plotting
                     index += 1
-                curr_vt, curr_wt = costs[min_cost_index][0], costs[min_cost_index][1]
-                if print_counter%10 == 0:
-                    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
-                    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
-                    print(f"Similar costs: {costs[min_cost_index-2:min_cost_index+3]}")
+                curr_vt, curr_wt = costs[min_cost_index][0][0], costs[min_cost_index][0][1]
+                #if print_counter%10 == 0:
+                #    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
+                    #print(f"Similar costs: {costs[min_cost_index-2:min_cost_index+3]}")
                     #print(f"costs: {costs}")
-                    print(f"Current goal pose: {curr_goal_pose}")
+                #    print(f"Current goal pose: {curr_goal_pose}")
                 
                 self.movpub.emit([curr_vt, curr_wt])
 

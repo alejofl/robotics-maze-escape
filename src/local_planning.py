@@ -1,94 +1,138 @@
-
 import copy
-from custom_types import Point
-from emission import RobotMovementEmitter
-from kinematics import PT2Block, forwardKinematics
-from matrix_manipulation import inverse_tf_mat, pose2tf_mat, tf_mat2pose
+from custom_types import Pose
+from emission import RobotMovementEmitter, TrajectoryEmitter
+from kinematics import PT2Block, forward_kinematics
+from matrix_manipulation import inverse_matrix, pose_to_tf_matrix, tf_matrix_to_pose
 import rospy
 import tf2_ros
-from nav_msgs.msg import Path as RosPath
 import numpy as np
-import numpy.typing as npt
-from geometry_msgs.msg import PoseStamped as RosPoseStamped
-
+from typing import List, Tuple
 from scipy.spatial.transform import Rotation as R
 
 
 class RobotMovement:
+    """
+    Class for local planning of a robot's movement towards a series of goals.
+    This class uses a PT2 block for velocity control and computes the robot's trajectory
+    based on the current pose and a set of goals.
+    """
+    def __init__(
+        self,
+        initial_pose: Pose,
+        goals: np.ndarray,
+        time_step: float,
+        horizon: int,
+        velocity_publisher: RobotMovementEmitter,
+        trajectory_publisher: TrajectoryEmitter
+    ):
+        """
+        Initializes the RobotMovement class.
 
-    def __init__(self, initial_position: Point, initial_orientation, goals):
-        
-        self.tfBuffer = tf2_ros.Buffer()
-        self.listener = tf2_ros.TransformListener(self.tfBuffer)
-        self.robot_pose = [initial_position.x, initial_position.y, initial_orientation]
-        
-        # print("Waiting for global plan...")
-        # def callback(data):
-        #     print("callback!!!")
-        #     self.got_info = True
-        #     self.goals = [(pose.position.x, pose.position.y, 0.0) for pose in data.poses]
-        #     print(f"Received {len(self.goals)} goals")
-        # rospy.sleep(1)
-        # rospy.Subscriber("/maze_escape/global_plan", RosPath, callback)
+        Args:
+            initial_pose (Pose): Initial pose of the robot in the form of a Pose object.
+            goals (np.ndarray): Array of goals where each goal is a Point with x, y coordinates.
+            time_step (float): Time step for the PT2 block and trajectory calculations.
+            horizon (int): Number of steps in the future to consider for trajectory planning.
+            velocity_publisher (RobotMovementEmitter): Publisher for robot velocity messages.
+            trajectory_publisher (TrajectoryEmitter): Publisher for local trajectory messages.
+        """
+        self.tf_buffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.robot_pose = (initial_pose.x, initial_pose.y, initial_pose.theta)
         
         self.goals = []
-        # TODO: LOS GOALS AHORA ESTÁN COMO MapPoint, NO COMO PoseStamped. NOS FALTAN LOS THETA
-        #for goal in goals:
-            # curr_goal = RosPoseStamped()
-            # curr_goal.pose.position.x = goal.x
-            # curr_goal.pose.position.y = goal.y
-            # curr_goal.pose.position.z = 0.0
-        #self.goals.append(np.array([goal.x, goal.y, 0.0]) for goal in goals)
-        self.goals.append(np.array([3,1,0]))
-        self.goals.append(np.array([3,2,0]))
-        self.goals.append(np.array([2,2,0]))
-        
-        print(f"Received {goals} goals") # BORRAR ESTO
-        print(f"Goals turned into poses: {self.goals}")
-        
+        for i, goal in enumerate(goals):
+            if i == len(goals) - 1:
+                self.goals.append(np.array([goal.x, goal.y, 0.0]))
+            else:
+                theta = np.arctan2(goals[i + 1].y - goal.y, goals[i + 1].x - goal.x)
+                self.goals.append(np.array([goal.x, goal.y, theta]))
         self.current_goal_index = 0
-        self.movpub = RobotMovementEmitter()
-        print(f"Robot initial position: {self.robot_pose}")
 
-    def _localiseRobot(self):
-        """Localises the robot towards the 'map' coordinate frame. Returns pose in format (x,y,theta)"""
+        self.time_step = time_step
+        self.pt2_block = PT2Block(ts=time_step)
+        self.horizon = horizon
+
+        self.velocity_publisher = velocity_publisher
+        self.trajectory_publisher = trajectory_publisher
+
+    def localize_robot(self):
+        """
+        Private method.
+        Localizes the robot by looking up its transform from the 'map' frame to the 'base_link' frame.
+        This method continuously attempts to retrieve the robot's pose until successful.
+        It updates the robot_pose attribute with the current position and orientation of the robot.
+        
+        Returns:
+            None
+        """
         while True:
             try:
-                trans = self.tfBuffer.lookup_transform('map', 'base_link', rospy.Time(0), rospy.Duration(1.0))
+                trans = self.tf_buffer.lookup_transform("map", "base_link", rospy.Time(0), rospy.Duration(1.0))
                 break
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                print(f"Robot localisation took longer than 1 sec, {e}")
                 continue
 
         theta = R.from_quat([
             trans.transform.rotation.x,
             trans.transform.rotation.y,
             trans.transform.rotation.z,
-            trans.transform.rotation.w]).as_euler("xyz")[2]
-        
+            trans.transform.rotation.w
+        ]).as_euler("xyz")[2]
+
         self.robot_pose = np.array([
             trans.transform.translation.x,
             trans.transform.translation.y,
-            theta])
+            theta
+        ])
 
-    def _get_goal_in_robot_coordinates(self):
-        """Returns the goal in the robot coordinates"""
-        robot_tf_mat = pose2tf_mat(self.robot_pose)
-        goal_tf_mat = pose2tf_mat(self.goals[self.current_goal_index])  # Esto en realidad es de array a tf_mat, pero se entiende
-        goal_in_robot_coordinates = inverse_tf_mat(robot_tf_mat) @ goal_tf_mat # Por qué era un arroba para multiplicar matrices no?
-        return tf_mat2pose(goal_in_robot_coordinates)
+    def get_goal_in_robot_coordinates(self) -> np.ndarray:
+        """
+        Private method.
+        Converts the current goal pose from world coordinates to robot coordinates.
+        This method computes the transformation matrix from the robot's pose to the goal's pose
+        and returns the goal pose in the robot's coordinate system.
 
-    def _create_vt_and_wt(self, previous_vt, previous_wt):
+        Returns:
+            np.ndarray: The goal pose in the robot's coordinate system as a numpy array.
+        """
+        robot_tf_matrix = pose_to_tf_matrix(self.robot_pose)
+        goal_tf_matrix = pose_to_tf_matrix(self.goals[self.current_goal_index])
+        goal_in_robot_coordinates = inverse_matrix(robot_tf_matrix) @ goal_tf_matrix # The 'at' operator is used for matrix multiplication
+        return tf_matrix_to_pose(goal_in_robot_coordinates)
+
+    def create_vt_and_wt(self) -> List[Tuple[float, float]]:
+        """
+        Private method.
+        Creates a list of tuples representing possible forward velocities (vt) and angular velocities (wt).
+
+        Returns:
+            List[Tuple[float, float]]: A list of tuples where each tuple contains a linear velocity and an angular velocity.
+        """
         values = []
         for vt in np.arange(-0.2, 0.2 +0.1, 0.1):
             for wt in np.arange(-10, 10 +0.1, 0.5):
                 values.append((vt, wt))
         return values
 
-    def _costFn(self, pose: npt.ArrayLike, goalpose: npt.ArrayLike, control: npt.ArrayLike) -> float:
-        x_error = np.abs(pose[0] - goalpose[0])
-        y_error = np.abs(pose[1] - goalpose[1])
-        theta_error = np.abs(pose[2] - goalpose[2])
+    def cost_function(self, pose: np.ndarray, goal_pose: np.ndarray, control: np.ndarray) -> float:
+        """
+        Private method.
+        Computes the cost of a given pose relative to the goal pose and control input.
+        This function calculates the error in position and orientation between the current pose and the goal pose,
+        and applies a weighted sum to compute the cost. The velocity is also considered in the cost calculation.
+
+        Args:
+            pose (np.ndarray): Position and orientation of the robot in the form of a numpy array.
+            goal_pose (np.ndarray): Goal position and orientation in the form of a numpy array.
+            control (np.ndarray): Velocity in the form of a numpy array, containing linear and angular components.
+
+        Returns:
+            float: The computed cost as a float value.
+        """
+        x_error = np.abs(pose[0] - goal_pose[0])
+        y_error = np.abs(pose[1] - goal_pose[1])
+        theta_error = np.abs(pose[2] - goal_pose[2])
         if theta_error > np.pi:
             theta_error -= 2*np.pi
         elif theta_error < -np.pi:
@@ -103,82 +147,68 @@ class RobotMovement:
         s_weight_matrix = np.array([
             [1, 0, 0],
             [0, 1, 0],
-            [0, 0, 0.0] # Podría ser 0.3
+            [0, 0, 0.0] # Could be 0.3
         ])
 
         c_weight_matrix = np.array([
             [0, 0],
-            [0, 0]  # Sign that the horizon should be higher
+            [0, 0]
         ])
 
         return np.transpose(error_vector) @ s_weight_matrix @ error_vector + np.transpose(control) @ c_weight_matrix @ control
 
-    # We directly check the goalpose in the robot coordinates
-    def _is_goal_reached(self, goalpose: npt.ArrayLike) -> bool:
-        #robot_pose = self.robot_pose
-        #x_error = np.abs(robot_pose[0] - goalpose[0])
-        #y_error = np.abs(robot_pose[1] - goalpose[1])
-        #theta_error = np.abs(robot_pose[2] - goalpose[2])
-        #if theta_error > np.pi:
-        #    theta_error -= 2*np.pi
-        #elif theta_error < -np.pi:
-        #    theta_error += 2*np.pi
-        #print(f"Robot pose: {robot_pose}, Goal pose: {goalpose}, Errors: x={x_error}, y={y_error}, theta={theta_error}")
-        #return x_error < 0.1 and y_error < 0.1 and theta_error < 0.1
-        #print(f"Goal pose: {goalpose}")
-        return goalpose[0] < 0.1 and goalpose[1] < 0.1# and np.abs(goalpose[2]) < 0.2
+    def is_goal_reached(self, goal_pose: np.ndarray) -> bool:
+        """
+        Private method.
+        Checks if the robot has reached the current goal pose.
+        
+        Returns:
+            bool: True if the robot is within a threshold distance from the goal pose, False otherwise.
+        """
+        return goal_pose[0] < 0.1 and goal_pose[1] < 0.1 #and np.abs(goal_pose[2]) < 0.2
 
-    def run_robot(self, robotModelPT2: PT2Block, horizon, ts: float):
-        first = True
+    def run(self):
+        """
+        The main method that runs the local planning algorithm.
+        It continuously checks if the robot has reached the current goal pose and updates the robot's trajectory
+        towards the goal using a PT2 block for velocity control.
+        The method iterates through the goals, localizing the robot and computing the optimal control inputs
+        to minimize the cost function until all goals are reached.
+        The trajectory is published at each step, and the robot's velocity is updated accordingly.
+        
+        Returns:
+            None
+        """
         while True:
-            curr_goal_pose = self._get_goal_in_robot_coordinates()
-            print(f"Current goal pose: {curr_goal_pose}")
-            print_counter = 0
-            while not self._is_goal_reached(curr_goal_pose):
-                if not first:
-                    self._localiseRobot()
-                    curr_goal_pose = self._get_goal_in_robot_coordinates()
-                    #print(f"Robot pose: {self.robot_pose}")
-                else:
-                    print(f"Robot pose: {self.robot_pose}")
-                    curr_vt = 0
-                    curr_wt = 0
-                    first = False
-                
-                costs = []
-                index = 0
-                min_cost_index = 0
-                min_cost = float("inf")
-                print_counter += 1
-                for control in self._create_vt_and_wt(curr_vt, curr_wt):
-                    forwardSimPT2 = copy.deepcopy(robotModelPT2)
-                    forwardpose = [0,0,0]
-                    curr_cost = 0
-                    for i in range(horizon):
-                        control_sim = copy.deepcopy(control)
-                        v_t, w_t = control
-                        vt_dynamic = forwardSimPT2.update(v_t)
-                        control_dym = [vt_dynamic, w_t]
-                        forwardpose = forwardKinematics(control_dym, forwardpose, ts)
-                        curr_cost += self._costFn(forwardpose, curr_goal_pose, control_sim)
-                    if curr_cost < min_cost:
-                        min_cost = curr_cost
-                        min_cost_index = index
-                    costs.append((control_sim, curr_cost))   # This data is useful for plotting
-                    index += 1
-                curr_vt, curr_wt = costs[min_cost_index][0][0], costs[min_cost_index][0][1]
-                #if print_counter%10 == 0:
-                #    print(f"Current vt: {curr_vt}, Current wt: {curr_wt}, Cost: {min_cost}")
-                    #print(f"Similar costs: {costs[min_cost_index-2:min_cost_index+3]}")
-                    #print(f"costs: {costs}")
-                #    print(f"Current goal pose: {curr_goal_pose}")
-                
-                self.movpub.emit([curr_vt, curr_wt])
+            current_goal_pose = self.get_goal_in_robot_coordinates()
+            while not self.is_goal_reached(current_goal_pose):
+                self.localize_robot()
+                current_goal_pose = self.get_goal_in_robot_coordinates()
 
-            print(f"Goal of index {self.current_goal_index} reached")
+                min_cost = np.inf
+                min_forward_poses = None
+                min_control = None
+
+                for control in self.create_vt_and_wt():
+                    forward_velocity = copy.deepcopy(self.pt2_block)
+                    forward_pose = [0 ,0, 0]
+                    current_cost = 0
+                    forward_poses = []
+                    for i in range(self.horizon):
+                        vt, wt = control
+                        v_predicted = (forward_velocity.update(vt), wt)
+                        forward_pose = forward_kinematics(*v_predicted, forward_pose, self.time_step)
+                        forward_poses.append(forward_pose)
+                        current_cost += self.cost_function(forward_pose, current_goal_pose, control)
+                    if current_cost < min_cost:
+                        min_cost = current_cost
+                        min_control = control
+                        min_forward_poses = forward_poses
+
+                self.trajectory_publisher.emit([Pose(*p) for p in min_forward_poses])
+                self.velocity_publisher.emit(min_control)
+
             self.current_goal_index += 1
             if self.current_goal_index >= len(self.goals):
-                self.movpub.emit([0, 0])
-                print(f"Goal of index {self.current_goal_index-1} reached")
+                self.velocity_publisher.emit([0, 0])
                 break
-

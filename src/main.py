@@ -3,11 +3,11 @@ from kinematics import PT2Block
 from local_planning import RobotMovement
 import rospy
 import numpy as np
-from custom_types import Point
+from custom_types import Point, Pose
 from localization import get_map, deserialize_map, get_laser_scan, predict_robot_position
 from global_planning import GlobalPlanner, GOAL_POSITIONS
 from visualization import Plotter
-from emission import GlobalPlanEmmiter
+from emission import GlobalPlanEmmiter, RobotMovementEmitter, TrajectoryEmitter, GoalPoseEmitter
 
 
 if __name__ == "__main__":
@@ -18,7 +18,12 @@ if __name__ == "__main__":
     goal = rospy.get_param('/maze_escape/goal') - 1
 
     global_plan_emitter = GlobalPlanEmmiter()
+    velocity_emitter = RobotMovementEmitter()
+    trajectory_emitter = TrajectoryEmitter()
+    goal_pose_emitter = GoalPoseEmitter()
 
+    # Localization of the robot based on the map and laser scan data
+    rospy.loginfo("Starting localization based on laser scan data...")
     map_data = get_map()
     map = deserialize_map(map_data)
     laser_scan = get_laser_scan(map.resolution)
@@ -34,6 +39,12 @@ if __name__ == "__main__":
             .with_grid() \
             .show()
     robot_position_idx, robot_position, laser_scan  = predict_robot_position(map, laser_scan)
+    
+    # Global planning to find a path from the robot position to the goal position
+    rospy.loginfo("Starting global planning...")
+    goal_pose_emitter.emit(
+        [map.map[x][y] for x, y in GOAL_POSITIONS[goal]]
+    )
     global_path = GlobalPlanner \
         .get_planner(global_planner_algorithm, map, robot_position_idx, global_planner_heuristic) \
         .plan(GOAL_POSITIONS[goal])
@@ -48,20 +59,15 @@ if __name__ == "__main__":
             .with_ticks(np.arange(-1, 5, 1), np.arange(-1, 5, 1)) \
             .with_grid() \
             .show()
-        
     global_plan_emitter.emit(global_path)
 
-    movement = RobotMovement(robot_position, 0.0, global_path)
-    ts = 0.4
-    pt_bloc = PT2Block(ts=ts)
-    movement.run_robot(pt_bloc, 5, ts)
-
-    # DONE Para la primera iteración, tenemos la posición del robot. A partir de ahí tenemos que irla calculando con cada movimiento
-    # DONE Hacer un poco de voodoo matricial para tener el goal en función de la posición del robot. Pero está todo claro en el cookbook
-    # DONE Crear varias (vt, wt) para simular para dónde se mueve el robot (Considerar usar el par (vt, wt) anterior)
-    # DONE Hacer la simulación con lo de Kinematics
-    # DONE Hacer la función de costo
-    # DONE Quedarse con el que tenga menor costo
-    # DONE Hacer un publish de la velocidad y la rotación
-    # DONE Hacer el ciclo, después de eso hacer un publish de (0, 0) para que se frene
-
+    # Local planning to move the robot along the global path
+    rospy.loginfo("Starting local planning and robot movement...")
+    RobotMovement(
+        Pose(robot_position.x, robot_position.y, 0),
+        global_path,
+        0.4,
+        5,
+        velocity_emitter,
+        trajectory_emitter
+    ).run()

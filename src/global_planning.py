@@ -15,6 +15,10 @@ GOAL_POSITIONS = [
 
 @dataclass(eq=False, frozen=True)
 class Node:
+    """
+    Node class representing a position in the map.
+    Each node has an x and y coordinate, and a parent node for path reconstruction.
+    """
     x: int
     y: int
     parent: 'Node' = None
@@ -54,13 +58,32 @@ class Node:
 
 @dataclass(order=True, frozen=True)
 class PrioritizedNode:
+    """
+    PrioritizedNode class for A* algorithm.
+    This class extends the Node class and adds priority and cost attributes for pathfinding.
+    It is used to prioritize nodes based on their cost and heuristic value.
+    """
     priority: float
     cost: float
     node: Node = field(compare=False)
 
 
 class GlobalPlanner(ABC):
+    """
+    Abstract base class for global planners.
+    This class defines the interface for global path planning algorithms.
+    It provides methods to plan a path from an initial position to a goal position,
+    and to get the appropriate planner based on the planner type.
+    """
     def __init__(self, map: Map, initial_position: Tuple[int, int], heuristic: str = None):
+        """
+        Initialize the global planner with a map, initial position, and optional heuristic.
+
+        Args:
+            map (Map): The map to use for planning.
+            initial_position (Tuple[int, int]): The initial position of the robot, in map indices.
+            heuristic (str, optional): The heuristic function to use for path planning. Defaults to None, which means no heuristic is used.
+        """
         self.map = map
         self.initial_position = initial_position
         self.initial_node = Node(*initial_position, None)
@@ -142,6 +165,9 @@ class GlobalPlanner(ABC):
 
 
 class BFSPlanner(GlobalPlanner):
+    """
+    Breadth-First Search (BFS) planner for global path planning.
+    """
     def plan(self, goal_position: List[Tuple[int, int]] = GOAL_POSITIONS[0]) -> np.ndarray:
         unused_goal_positions = self.get_unused_goal_positions(goal_position)
         visited_nodes: set[Node] = set()
@@ -174,6 +200,9 @@ class BFSPlanner(GlobalPlanner):
 
 
 class DFSPlanner(GlobalPlanner):
+    """
+    Depth-First Search (DFS) planner for global path planning.
+    """
     def plan(self, goal_position: List[Tuple[int, int]] = GOAL_POSITIONS[0]) -> np.ndarray:
         unused_goal_positions = self.get_unused_goal_positions(goal_position)
         visited_nodes: set[Node] = set()
@@ -206,6 +235,9 @@ class DFSPlanner(GlobalPlanner):
 
 
 class AStarPlanner(GlobalPlanner):
+    """
+    A* planner for global path planning.
+    """
     def __init__(self, map: Map, initial_position: Tuple[int, int], heuristic: str = None):
         super().__init__(map, initial_position, heuristic)
         if self.heuristic is None:

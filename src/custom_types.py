@@ -14,12 +14,14 @@ class Map:
         origin (Tuple[float, float]): The origin coordinates of the map in world coordinates (x, y).
         resolution (float): The resolution of the map in pixels per meter.
         map (np.ndarray): The map data as a 2D numpy array, where each element represents a cell in the map.
+        costmap (np.ndarray, optional): An optional costmap for the map, used for obstacle avoidance. Created using a gaussian filter.
     """
     width: int
     height: int
     origin: Tuple[float, float]
     resolution: float
     map: np.ndarray
+    costmap: np.ndarray = None
 
 
 @dataclass
@@ -44,6 +46,17 @@ class MapPoint(Point):
         wall (bool): Indicates whether the point is a wall or not.
     """
     wall: bool
+
+
+@dataclass
+class CostmapMapPoint(Point):
+    """
+    Represents a point in the costmap with x and y coordinates, and a cost value.
+    
+    Args:
+        cost (float): The cost associated with the point.
+    """
+    cost: float
 
 
 @dataclass

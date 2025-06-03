@@ -51,6 +51,15 @@ if __name__ == "__main__":
     if enable_plotting:
         Plotter() \
             .with_size(8, 8) \
+            .with_costmap(map) \
+            .with_robot(robot_position) \
+            .with_title("Costmap with Robot Position") \
+            .with_labels("x [m]", "y [m]") \
+            .with_ticks(np.arange(-1, 5, 1), np.arange(-1, 5, 1)) \
+            .with_grid() \
+            .show()
+        Plotter() \
+            .with_size(8, 8) \
             .with_map(map) \
             .with_robot(robot_position) \
             .with_global_plan(global_path) \

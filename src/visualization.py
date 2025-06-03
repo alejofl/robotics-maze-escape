@@ -49,6 +49,23 @@ class Plotter:
         self.ax.scatter(points_xs, points_ys, c=COLORS["twgrey"], alpha=0.08, s=6**2, label="Unobstructed Space")
         return self
 
+    def with_costmap(self, map: Map):
+        """
+        Plot the costmap in world coordinates.
+
+        Args:
+            map (Map): map object containing the costmap data
+        """
+        xs = []
+        ys = []
+        colors = []
+        for point in map.costmap.flatten():
+            xs.append(point.x)
+            ys.append(point.y)
+            colors.append(point.cost)
+        self.ax.scatter(xs, ys, c=colors, cmap="gray_r", alpha=1.0, s=6**2)
+        return self
+
     def with_laser_scan(self, laser_scan: np.ndarray):
         """
         Plot the laser scan data in world coordinates.

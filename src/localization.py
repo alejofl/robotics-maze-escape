@@ -5,7 +5,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sensor_msgs.msg import LaserScan
 from nav_msgs.srv import GetMap
 from nav_msgs.msg import OccupancyGrid
-from custom_types import Map, Point, MapPoint
+from custom_types import Map, Point, MapPoint, CostmapMapPoint
+from scipy.ndimage import gaussian_filter
 
 
 def get_map() -> OccupancyGrid:
@@ -33,18 +34,24 @@ def deserialize_map(data: OccupancyGrid) -> Map:
                                 j * data.info.resolution + data.info.origin.position.y + (data.info.resolution / 2))
     
     walls = np.reshape(data.data, (data.info.height, data.info.width))
+    convoluted_walls = gaussian_filter(walls, sigma=1.2)
+    convoluted_walls = convoluted_walls / np.max(convoluted_walls)
     map = np.zeros((data.info.height, data.info.width), dtype=Point)
+    costmap = np.zeros((data.info.height, data.info.width), dtype=Point)
     for y in range(data.info.height):
         for x in range(data.info.width):
             p = MapPoint(*coordinates(x, y), walls[y][x] == 100)
+            c = CostmapMapPoint(*coordinates(x, y), convoluted_walls[y][x])
             map[x][y] = p
+            costmap[x][y] = c
 
     return Map(
         width=data.info.width,
         height=data.info.height,
         origin=(data.info.origin.position.x, data.info.origin.position.y),
         resolution=data.info.resolution,
-        map=map
+        map=map,
+        costmap=costmap
     )
 
 

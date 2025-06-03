@@ -193,7 +193,7 @@ class BFSPlanner(GlobalPlanner):
                 for y in np.arange(curr.y - 1, curr.y + 2):
                     if y < 0 or y >= self.map.height or (x, y) == (curr.x, curr.y):
                         continue
-                    if not self.map.map[x][y].wall and (x, y) not in unused_goal_positions:
+                    if self.map.costmap[x][y].cost < 0.15 and (x, y) not in unused_goal_positions:
                         queue.append(Node(x, y, curr))
 
         raise RuntimeError("No path found to the goal position.")
@@ -228,7 +228,7 @@ class DFSPlanner(GlobalPlanner):
                 for y in np.arange(curr.y - 1, curr.y + 2):
                     if y < 0 or y >= self.map.height or (x, y) == (curr.x, curr.y):
                         continue
-                    if not self.map.map[x][y].wall and (x, y) not in unused_goal_positions:
+                    if self.map.costmap[x][y].cost < 0.15 and (x, y) not in unused_goal_positions:
                         queue.append(Node(x, y, curr))
 
         raise RuntimeError("No path found to the goal position.")
@@ -269,11 +269,14 @@ class AStarPlanner(GlobalPlanner):
                 for y in np.arange(curr.y - 1, curr.y + 2):
                     if y < 0 or y >= self.map.height or (x, y) == (curr.x, curr.y):
                         continue
-                    if not self.map.map[x][y].wall and (x, y) not in unused_goal_positions:
+                    if (x, y) not in unused_goal_positions:
                         next_node = Node(x, y, curr)
+                        distance = np.sqrt((x - curr.x) ** 2 + (y - curr.y) ** 2)
+                        obstacle_damp = 50 * self.map.costmap[x][y].cost if self.map.costmap is not None else 0
+                        cost = prioritized_node.cost + distance + obstacle_damp
                         queue.put(PrioritizedNode(
-                            prioritized_node.cost + 1 + self.heuristic(next_node, goal_position),
-                            prioritized_node.cost + 1,
+                            cost + self.heuristic(next_node, goal_position),
+                            cost,
                             next_node
                         ))
 

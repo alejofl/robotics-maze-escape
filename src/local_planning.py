@@ -100,6 +100,24 @@ class RobotMovement:
         goal_tf_matrix = pose_to_tf_matrix(self.goals[self.current_goal_index])
         goal_in_robot_coordinates = inverse_matrix(robot_tf_matrix) @ goal_tf_matrix # The 'at' operator is used for matrix multiplication
         return tf_matrix_to_pose(goal_in_robot_coordinates)
+    
+    def get_pose_in_world_coordinates(self, pose: np.ndarray) -> np.ndarray:
+        """
+        Private method.
+        Converts a given pose from robot coordinates to world coordinates.
+        This method computes the transformation matrix from the robot's pose to the given pose
+        and returns the pose in world coordinates.
+
+        Args:
+            pose (np.ndarray): The pose in robot coordinates as a numpy array.
+
+        Returns:
+            np.ndarray: The pose in world coordinates as a numpy array.
+        """
+        robot_tf_matrix = pose_to_tf_matrix(self.robot_pose)
+        pose_tf_matrix = pose_to_tf_matrix(pose)
+        pose_in_world_coordinates = robot_tf_matrix @ pose_tf_matrix
+        return tf_matrix_to_pose(pose_in_world_coordinates)
 
     def create_vt_and_wt(self) -> List[Tuple[float, float]]:
         """
@@ -205,7 +223,7 @@ class RobotMovement:
                         min_control = control
                         min_forward_poses = forward_poses
 
-                self.trajectory_publisher.emit([Pose(*p) for p in min_forward_poses])
+                self.trajectory_publisher.emit([Pose(*self.get_pose_in_world_coordinates(p)) for p in min_forward_poses])
                 self.velocity_publisher.emit(min_control)
 
             self.current_goal_index += 1

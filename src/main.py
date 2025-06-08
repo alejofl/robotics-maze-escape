@@ -1,5 +1,4 @@
 #!/usr/bin/python
-from kinematics import PT2Block
 from local_planning import RobotMovement
 import rospy
 import numpy as np

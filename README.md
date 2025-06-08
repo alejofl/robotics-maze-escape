@@ -40,7 +40,7 @@ roslaunch robotics-maze-escape launch_simulation.launch \
     enable_plotting:=<true | false> \
     goal:=<1 | 2> \
     global_planner_algorithm:=<bfs | dfs | astar | dijkstra> \
-    global_planner_heuristic:=<manhattan | euclidean> \
+    global_planner_heuristic:=<manhattan | euclidean>
 ```
 
 The `global_planner_heuristic` parameter is only used if the `global_planner_algorithm` is set to `astar`. The `goal` parameter allows you to choose between two different goals in the maze, `1` refering to the bottom left corner and `2` to the top right corner. The `enable_plotting` parameter allows you to enable or disable plotting using Matplotlib.
